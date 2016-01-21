@@ -611,24 +611,22 @@ int TPpContext::CPPinclude(TPpToken* ppToken)
         if (token != '\n' && token != EndOfInput) {
             parseContext.ppError(ppToken->loc, "extra content after file designation", "#include", "");
         } else {
-            std::string sourceName;
-            std::string replacement;
-            std::tie(sourceName, replacement) = includer.include(filename.c_str());
-            if (!sourceName.empty()) {
-                if (!replacement.empty()) {
+            TShader::Includer::IncludeResult res = includer.include(filename.c_str(), TShader::Includer::EIncludeRelative, currentSourceFile.c_str());
+            if (!res.file_name.empty()) {
+                if (res.file_data && res.file_length) {
                     const bool forNextLine = parseContext.lineDirectiveShouldSetNextLine();
-                    std::ostringstream content;
-                    content << "#line " << forNextLine << " " << "\"" << sourceName << "\"\n";
-                    content << replacement << (replacement.back() == '\n' ? "" : "\n");
-                    content << "#line " << directiveLoc.line + forNextLine << " " << directiveLoc.getStringNameOrNum() << "\n";
-                    pushInput(new TokenizableString(directiveLoc, content.str(), this));
+                    std::ostringstream prologue;
+                    std::ostringstream epilogue;
+                    prologue << "#line " << forNextLine << " " << "\"" << res.file_name << "\"\n";
+                    epilogue << (res.file_data[res.file_length - 1] == '\n'? "" : "\n") << "#line " << directiveLoc.line + forNextLine << " " << directiveLoc.getStringNameOrNum() << "\n";
+                    pushInput(new TokenizableString(directiveLoc, prologue.str(), res, epilogue.str(), this));
                 }
                 // At EOF, there's no "current" location anymore.
                 if (token != EndOfInput) parseContext.setCurrentColumn(0);
                 // Don't accidentally return EndOfInput, which will end all preprocessing.
                 return '\n';
             } else {
-                parseContext.ppError(directiveLoc, replacement.c_str(), "#include", "");
+                parseContext.ppError(directiveLoc, std::string(res.file_data, res.file_length).c_str(), "#include", "");
             }
         }
     }

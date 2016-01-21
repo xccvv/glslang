@@ -294,23 +294,43 @@ public:
     // Interface to #include handlers.
     class Includer {
     public:
+        typedef enum {
+          EIncludeRelative,
+          EIncludeStandard
+        } IncludeType;
+
+        struct IncludeResult {
+          std::string file_name;
+          const char* file_data;
+          const size_t file_length;
+          void* user_data;
+        };
         // On success, returns the full path and content of the file with the given
         // filename that replaces "#include filename". On failure, returns an empty
         // string and an error message.
-        virtual std::pair<std::string, std::string> include(const char* filename) const = 0;
+        virtual IncludeResult include(const char* filename, IncludeType type,
+                                      const char* currentFile) = 0;
+        virtual void releaseInclude(const IncludeResult* result) = 0;
     };
 
     // Returns an error message for any #include directive.
     class ForbidInclude : public Includer {
     public:
-        std::pair<std::string, std::string> include(const char* /*filename*/) const override
+        IncludeResult include(const char* /*file_name*/, IncludeType, const char* /*including_file*/) override
         {
-            return std::make_pair<std::string, std::string>("", "unexpected include directive");
+            static const char unexpected_include[] = "unexpected include directive";
+            return IncludeResult({"", unexpected_include, sizeof(unexpected_include) - 1});
         }
+        virtual void releaseInclude(const IncludeResult* result) override {}
     };
 
+    bool parse(const TBuiltInResource* res, int defaultVersion, EProfile defaultProfile, bool forceDefaultVersionAndProfile,
+               bool forwardCompatible, EShMessages messages) {
+      TShader::ForbidInclude includer;
+      return parse(res, defaultVersion, defaultProfile, forceDefaultVersionAndProfile, forwardCompatible, messages, includer);
+    }
     bool parse(const TBuiltInResource*, int defaultVersion, EProfile defaultProfile, bool forceDefaultVersionAndProfile,
-               bool forwardCompatible, EShMessages, const Includer& = ForbidInclude());
+               bool forwardCompatible, EShMessages, Includer&);
 
     // Equivalent to parse() without a default profile and without forcing defaults.
     // Provided for backwards compatibility.
@@ -318,7 +338,7 @@ public:
     bool preprocess(const TBuiltInResource* builtInResources,
                     int defaultVersion, EProfile defaultProfile, bool forceDefaultVersionAndProfile,
                     bool forwardCompatible, EShMessages message, std::string* outputString,
-                    const TShader::Includer& includer);
+                    TShader::Includer& includer);
 
     const char* getInfoLog();
     const char* getInfoDebugLog();
